@@ -301,3 +301,5 @@ All Nokia 5G architecture claims in this document are grounded in:
 
 *Sadhvi — AI Cloud Engineer | Nokia 5G → AWS | Calgary, AB*  
 *GitHub: github.com/sadvi11*
+
+📐 [View full architecture diagram](diagrams/ARCHITECTURE.md)
