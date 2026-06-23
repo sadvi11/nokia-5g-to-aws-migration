@@ -8,7 +8,7 @@
 
 ## Background
 
-From 2021–2024, I operated Nokia's Cloud-Native 5G Core network functions — AMF, SMF, UPF, CBIS, CBAM, NRF — supporting European mobile operators at carrier scale (10M+ active subscribers). The infrastructure ran on Containerized Network Functions (CNFs) deployed on Kubernetes, with strict SLA requirements: five-nines uptime, sub-200ms session setup latency, and zero data plane disruption during rolling upgrades.
+From Dec,2022–July2024, I operated Nokia's Cloud-Native 5G Core network functions — AMF, SMF, UPF, CBIS, CBAM, NRF — supporting European mobile operators at carrier scale (10M+ active subscribers). The infrastructure ran on Containerized Network Functions (CNFs) deployed on Kubernetes, with strict SLA requirements: five-nines uptime, sub-200ms session setup latency, and zero data plane disruption during rolling upgrades.
 
 When I transitioned into AWS cloud engineering, I noticed something the resumes never show: **5G Core architecture and AWS production architecture solve the exact same problems.** High availability, horizontal scaling, service discovery, traffic routing, event streaming, container orchestration — they are the same engineering challenges, solved with different tooling.
 
