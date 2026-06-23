@@ -1,0 +1,53 @@
+flowchart TB
+  Client(["Internet Client"])
+
+  subgraph Entry ["Entry point — Nokia AMF → AWS ALB"]
+    ALB["Application Load Balancer\n(HTTPS, multi-AZ, cross-zone)"]
+    WAF["AWS WAF\n(L7 threat protection)"]
+  end
+
+  subgraph DataPlane ["Data plane — Nokia UPF → AWS VPC"]
+    VPC["VPC\n(3 AZs, public + private subnets)"]
+    NAT["NAT Gateway\n(per-AZ — CGNAT equivalent)"]
+    FlowLogs["VPC Flow Logs\n(usage reporting to S3)"]
+  end
+
+  subgraph Orchestration ["Container orchestration — Nokia CBAM → ECS Fargate"]
+    ECS["ECS Fargate Service\n(3 tasks, rolling deploy, min-healthy 100%)"]
+    ASG["Application Auto Scaling\n(CPU + ALB request-count HPA)"]
+    ECR["Amazon ECR\n(container image registry)"]
+  end
+
+  subgraph EventBus ["Event streaming — Nokia OAM bus → Kinesis"]
+    Kinesis["Kinesis Data Streams\n(ordered per partition key, KMS encrypted)"]
+    Lambda["Lambda consumer\n(FCAPS event processor)"]
+  end
+
+  subgraph DataStore ["Subscriber store — Nokia UDM → DynamoDB"]
+    DDB["DynamoDB\n(on-demand, TTL, PITR, KMS encrypted)"]
+  end
+
+  subgraph Discovery ["Service discovery — Nokia NRF → Cloud Map"]
+    CloudMap["AWS Cloud Map\n(private DNS namespace, ECS auto-register)"]
+  end
+
+  subgraph Policy ["Compliance policy — Nokia PCF → AWS Config"]
+    Config["AWS Config\n(6 managed rules: PCI DSS + SOC 2)"]
+    CloudTrail["CloudTrail\n(multi-region API audit trail)"]
+    SecHub["Security Hub\n(findings aggregation + scoring)"]
+  end
+
+  Client --> WAF --> ALB
+  ALB --> ECS
+  ECS --> ECR
+  ECS --> ASG
+  ECS --> DDB
+  ECS --> Kinesis
+  ECS --> CloudMap
+  Kinesis --> Lambda
+  Lambda --> DDB
+  VPC --> NAT
+  VPC --> FlowLogs
+  ECS -.->|"runs inside"| VPC
+  Config --> SecHub
+  CloudTrail --> Config
