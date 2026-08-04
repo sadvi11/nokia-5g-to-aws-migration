@@ -251,12 +251,20 @@ Nokia network slicing isolates eMBB (high-throughput mobile broadband) from URLL
 | Metric | Nokia 5G (per operator deployment) | AWS Equivalent Pattern |
 |---|---|---|
 | Active subscribers | 100,000+ per deployment | 100,000+ concurrent users |
-| PDU sessions | 5–15M concurrent | 5–15M concurrent Lambda invocations |
-| UPF throughput | 60+ Gbps per instance | VPC bandwidth limits (up to 100 Gbps) |
+| Concurrent PDU sessions | ~1 per active subscriber, plus a second for VoNR/IMS — so the same order of magnitude as the subscriber count | Concurrent Lambda invocations scale with active users, not with registered ones |
+| Data-plane throughput | Scales independently of the control plane — UPF instances are added for capacity without touching AMF/SMF | VPC and NAT bandwidth scale separately from Lambda concurrency |
 | AMF registration rate | 100,000+ UEs/hour | 100,000+ ALB requests/minute |
 | Session setup latency | <200ms end-to-end | <200ms API Gateway + Lambda P95 |
 | Upgrade downtime | 0 (zero-downtime rolling) | 0 (ECS rolling deployment, `maxUnavailable: 0`) |
 | Redundancy model | N+1 active-active across 3 zones | Multi-AZ, min 3 AZs, cross-zone LB enabled |
+
+> **On the numbers:** subscriber counts, registration rate and latency targets are the
+> figures the deployments were dimensioned against. Session concurrency is stated as a
+> ratio rather than an absolute, because it follows from the subscriber count rather than
+> standing on its own. Where a figure would be a platform specification rather than
+> something I measured, the row describes the scaling property instead — the architectural
+> point here is *how* each tier scales, and a precise number I could not defend would add
+> nothing to it.
 
 ---
 
