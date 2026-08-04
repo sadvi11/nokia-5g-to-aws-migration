@@ -28,9 +28,9 @@ resource "aws_vpc" "main" {
   enable_dns_hostnames = true
 
   tags = {
-    Name          = "${var.project_name}-${var.environment}-vpc"
-    NokiaMapping  = "UPF-DataPlane"
-    Description   = "Data plane network - maps to Nokia UPF forwarding domain"
+    Name         = "${var.project_name}-${var.environment}-vpc"
+    NokiaMapping = "UPF-DataPlane"
+    Description  = "Data plane network - maps to Nokia UPF forwarding domain"
   }
 }
 

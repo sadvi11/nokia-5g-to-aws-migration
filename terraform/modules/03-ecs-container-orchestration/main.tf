@@ -212,7 +212,7 @@ resource "aws_ecs_task_definition" "main" {
 
       environment = [
         { name = "ENVIRONMENT", value = var.environment },
-        { name = "PROJECT",     value = var.project_name }
+        { name = "PROJECT", value = var.project_name }
       ]
     }
   ])
@@ -235,11 +235,9 @@ resource "aws_ecs_service" "main" {
 
   # Rolling deployment = Nokia CBAM zero-downtime CNF upgrade
   # CBAM coordinates rolling upgrades across interdependent NFs.
-  # maxUnavailable: 0 = no task killed until replacement passes health check
-  deployment_configuration {
-    maximum_percent         = 200  # Allow 2x during deployment (surge)
-    minimum_healthy_percent = 100  # Never go below desired count
-  }
+  # minimum_healthy_percent 100 = no task killed until its replacement is healthy
+  deployment_maximum_percent         = 200 # Allow 2x during deployment (surge)
+  deployment_minimum_healthy_percent = 100 # Never go below desired count
 
   # Spread across AZs = Nokia cloud zone distribution
   # Nokia runs CNF pools across 3+ cloud zones for N+1 redundancy

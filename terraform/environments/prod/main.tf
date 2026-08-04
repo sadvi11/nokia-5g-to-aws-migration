@@ -56,11 +56,11 @@ provider "aws" {
 module "vpc_data_plane" {
   source = "../../modules/01-vpc-data-plane"
 
-  project_name        = var.project_name
-  environment         = var.environment
-  vpc_cidr            = var.vpc_cidr
-  availability_zones  = var.availability_zones
-  public_subnet_cidrs = var.public_subnet_cidrs
+  project_name         = var.project_name
+  environment          = var.environment
+  vpc_cidr             = var.vpc_cidr
+  availability_zones   = var.availability_zones
+  public_subnet_cidrs  = var.public_subnet_cidrs
   private_subnet_cidrs = var.private_subnet_cidrs
 }
 
@@ -72,11 +72,11 @@ module "vpc_data_plane" {
 module "alb_entry_point" {
   source = "../../modules/02-alb-entry-point"
 
-  project_name       = var.project_name
-  environment        = var.environment
-  vpc_id             = module.vpc_data_plane.vpc_id
-  public_subnet_ids  = module.vpc_data_plane.public_subnet_ids
-  health_check_path  = "/health"
+  project_name      = var.project_name
+  environment       = var.environment
+  vpc_id            = module.vpc_data_plane.vpc_id
+  public_subnet_ids = module.vpc_data_plane.public_subnet_ids
+  health_check_path = "/health"
 }
 
 # =============================================================================
@@ -87,23 +87,23 @@ module "alb_entry_point" {
 module "ecs_orchestration" {
   source = "../../modules/03-ecs-container-orchestration"
 
-  project_name        = var.project_name
-  environment         = var.environment
-  vpc_id              = module.vpc_data_plane.vpc_id
-  private_subnet_ids  = module.vpc_data_plane.private_subnet_ids
-  alb_target_group_arn = module.alb_entry_point.target_group_arn
+  project_name          = var.project_name
+  environment           = var.environment
+  vpc_id                = module.vpc_data_plane.vpc_id
+  private_subnet_ids    = module.vpc_data_plane.private_subnet_ids
+  alb_target_group_arn  = module.alb_entry_point.target_group_arn
   alb_security_group_id = module.alb_entry_point.alb_security_group_id
 
   # Container config
-  container_image     = var.container_image
-  container_port      = var.container_port
-  cpu                 = var.ecs_cpu
-  memory              = var.ecs_memory
-  desired_count       = var.ecs_desired_count
+  container_image = var.container_image
+  container_port  = var.container_port
+  cpu             = var.ecs_cpu
+  memory          = var.ecs_memory
+  desired_count   = var.ecs_desired_count
 
   # Nokia CBAM parallel: N+1 redundancy (minimum 2 tasks across AZs)
-  min_capacity        = 2
-  max_capacity        = 6
+  min_capacity = 2
+  max_capacity = 6
 
   # Service discovery namespace (NRF equivalent)
   service_discovery_namespace_id = module.service_discovery.namespace_id
@@ -117,9 +117,9 @@ module "ecs_orchestration" {
 module "kinesis_event_bus" {
   source = "../../modules/04-kinesis-event-bus"
 
-  project_name   = var.project_name
-  environment    = var.environment
-  shard_count    = var.kinesis_shard_count
+  project_name    = var.project_name
+  environment     = var.environment
+  shard_count     = var.kinesis_shard_count
   retention_hours = var.kinesis_retention_hours
 }
 

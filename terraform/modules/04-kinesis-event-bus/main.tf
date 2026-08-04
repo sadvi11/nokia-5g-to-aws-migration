@@ -91,7 +91,7 @@ data "archive_file" "lambda_placeholder" {
   output_path = "${path.module}/lambda.zip"
 
   source {
-    content = <<-PYTHON
+    content  = <<-PYTHON
     import json
     import base64
 

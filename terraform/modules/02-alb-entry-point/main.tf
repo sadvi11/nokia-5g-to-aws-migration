@@ -138,12 +138,18 @@ resource "aws_lb_listener" "http_redirect" {
 # --- HTTPS Listener ---
 # For production: add ACM certificate ARN
 # Nokia AMF equivalent: N2 SCTP association termination with TLS
+# Created only when an ACM certificate ARN is supplied. A hardcoded placeholder
+# ARN here fails `terraform validate` outright, so the listener is made
+# conditional instead — the module stays valid without a certificate, and the
+# HTTPS path appears as soon as one is provided.
 resource "aws_lb_listener" "https" {
+  count = var.certificate_arn == "" ? 0 : 1
+
   load_balancer_arn = aws_lb.main.arn
   port              = "443"
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-  certificate_arn   = "arn:aws:acm:ca-central-1:ACCOUNT_ID:certificate/CERT_ID" # Replace
+  certificate_arn   = var.certificate_arn
 
   default_action {
     type             = "forward"
