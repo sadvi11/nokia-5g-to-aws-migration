@@ -1,8 +1,26 @@
-# Nokia 5G Core → AWS Architecture: A Production Migration Case Study
+# Nokia 5G Core → AWS: A Production Migration Case Study
 
-> **By Sadhvi** | Cloud & AI Engineer | [GitHub](https://github.com/sadvi11) | Calgary, Canada
->
-> *This case study documents how carrier-scale Nokia 5G Core network functions map directly to AWS production architecture — and what that means for designing highly available, low-latency fintech and enterprise cloud systems.*
+**Carrier-grade 5G network functions mapped to production AWS — function by function, with the Terraform to back it.**
+
+[![Terraform Validate](https://github.com/sadvi11/nokia-5g-to-aws-migration/actions/workflows/terraform-validate.yml/badge.svg)](https://github.com/sadvi11/nokia-5g-to-aws-migration/actions/workflows/terraform-validate.yml)
+[![Terraform](https://img.shields.io/badge/Terraform-1.5%2B-7B42BC?logo=terraform&logoColor=white)](https://terraform.io)
+[![AWS](https://img.shields.io/badge/AWS-ca--central--1-FF9900?logo=amazonaws&logoColor=white)](https://aws.amazon.com)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+<!-- DEMO SLOT — replace this comment with the architecture diagram once exported:
+     ![Architecture](docs/architecture.png)
+     Should show: the 5G SBA control/data plane on the left, the AWS equivalents on
+     the right, with the mapping arrows between them. This repo opens with a wall of
+     text today; the diagram is the single highest-impact addition. -->
+
+| | |
+|---|---|
+| **Stack** | Terraform · ECS Fargate · ALB · Kinesis · DynamoDB · Cloud Map · VPC · AWS Config |
+| **Telecom** | AMF · SMF · UPF · NRF · PCF · UDM · CBIS/CBAM · CNFs on Kubernetes |
+| **Compliance** | SOC 2 and PCI DSS control mappings |
+| **Status** | 7 Terraform modules, `terraform validate` green in CI |
+
+---
 
 ---
 
