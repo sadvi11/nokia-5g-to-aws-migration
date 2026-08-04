@@ -8,7 +8,7 @@
 
 ## Background
 
-From Dec,2022–July2024, I operated Nokia's Cloud-Native 5G Core network functions — AMF, SMF, UPF, CBIS, CBAM, NRF — supporting European mobile operators at carrier scale (10M+ active subscribers). The infrastructure ran on Containerized Network Functions (CNFs) deployed on Kubernetes, with strict SLA requirements: five-nines uptime, sub-200ms session setup latency, and zero data plane disruption during rolling upgrades.
+I spent 2.5 years operating Nokia's Cloud-Native 5G Core network functions — AMF, SMF, UPF, CBIS, CBAM, NRF — across 10+ operator deployments serving **Bell Canada** and **T-Mobile US**, at roughly 100,000+ subscribers per deployment. The infrastructure ran as Containerized Network Functions (CNFs) on Kubernetes, against a 99.9% SLA, sub-200ms session setup latency, and zero data-plane disruption during rolling upgrades.
 
 When I transitioned into AWS cloud engineering, I noticed something the resumes never show: **5G Core architecture and AWS production architecture solve the exact same problems.** High availability, horizontal scaling, service discovery, traffic routing, event streaming, container orchestration — they are the same engineering challenges, solved with different tooling.
 
@@ -53,7 +53,7 @@ The AMF is the first 5G Core component a UE's signaling reaches after the gNodeB
 - Routes PDU session requests to the appropriate SMF
 - Manages mobility — when a UE moves between base stations, AMF coordinates the handover without dropping the session
 
-Nokia runs AMF in **active-active pools**. At a European operator, we ran AMF pools of 3–4 instances per region with N+1 redundancy. If one AMF pod fails, in-flight NAS procedures are redistributed across the pool. Subscriber context is stored in UDM, not the AMF pod, so the failover is stateless.
+Nokia runs AMF in **active-active pools**. On the deployments I worked on, we ran AMF pools of 3–4 instances per region with N+1 redundancy. If one AMF pod fails, in-flight NAS procedures are redistributed across the pool. Subscriber context is stored in UDM, not the AMF pod, so the failover is stateless.
 
 **Carrier-grade requirement: AMF failure must not drop any active subscriber session.**
 
@@ -164,7 +164,7 @@ Key properties of the Nokia OAM event bus:
 - **Decoupled**: NFs publish events without knowing which management system consumes them
 - **Ordered**: Events within a subscriber context arrive in sequence (critical for charging — a "session start" event must precede "session stop")
 - **Persistent**: Events are retained long enough for management systems to catch up after a restart
-- **High throughput**: At 10M+ subscribers, a busy UPF generates millions of usage report events per hour
+- **High throughput**: At 100,000+ subscribers per deployment, a busy UPF generates millions of usage report events per hour
 
 ### In AWS: Kinesis Data Streams
 
@@ -218,7 +218,7 @@ def process_session_event(event, context):
 
 ## High Availability: What Carrier Scale Taught Me About AWS Design
 
-Operating Nokia 5G Core for European operators with contractual five-nines SLAs (8.76 hours downtime per year maximum) taught me HA patterns that directly apply to AWS:
+Operating Nokia 5G Core for Bell Canada and T-Mobile US against contractual 99.9% SLAs (8.76 hours of downtime per year maximum) taught me HA patterns that apply directly to AWS:
 
 ### Pattern 1: Stateless Control Plane, Persistent Data Plane
 
@@ -248,9 +248,9 @@ Nokia network slicing isolates eMBB (high-throughput mobile broadband) from URLL
 
 ## Scale Context: What "Carrier Grade" Means in Numbers
 
-| Metric | Nokia 5G (European Operator) | AWS Equivalent Pattern |
+| Metric | Nokia 5G (per operator deployment) | AWS Equivalent Pattern |
 |---|---|---|
-| Active subscribers | 10M+ | 10M+ concurrent users |
+| Active subscribers | 100,000+ per deployment | 100,000+ concurrent users |
 | PDU sessions | 5–15M concurrent | 5–15M concurrent Lambda invocations |
 | UPF throughput | 60+ Gbps per instance | VPC bandwidth limits (up to 100 Gbps) |
 | AMF registration rate | 100,000+ UEs/hour | 100,000+ ALB requests/minute |
