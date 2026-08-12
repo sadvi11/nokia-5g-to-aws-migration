@@ -1,5 +1,11 @@
 # Nokia 5G Core → AWS Architecture: A Production Migration Case Study
 
+[![Terraform Validate](https://github.com/sadvi11/nokia-5g-to-aws-migration/actions/workflows/terraform-validate.yml/badge.svg)](https://github.com/sadvi11/nokia-5g-to-aws-migration/actions/workflows/terraform-validate.yml)
+![Terraform](https://img.shields.io/badge/Terraform-1.5-7B42BC?logo=terraform&logoColor=white)
+![AWS](https://img.shields.io/badge/AWS-ca--central--1-FF9900?logo=amazonaws&logoColor=white)
+![Modules](https://img.shields.io/badge/Modules-7-informational)
+![License](https://img.shields.io/badge/License-MIT-green)
+
 > **By Sadhvi** | Cloud & AI Engineer | [GitHub](https://github.com/sadvi11) | Calgary, Canada
 >
 > *This case study documents how carrier-scale Nokia 5G Core network functions map directly to AWS production architecture — and what that means for designing highly available, low-latency fintech and enterprise cloud systems.*
@@ -13,6 +19,69 @@ I spent 2.5 years operating Nokia's Cloud-Native 5G Core network functions — A
 When I transitioned into AWS cloud engineering, I noticed something the resumes never show: **5G Core architecture and AWS production architecture solve the exact same problems.** High availability, horizontal scaling, service discovery, traffic routing, event streaming, container orchestration — they are the same engineering challenges, solved with different tooling.
 
 This document is that mapping, built from real operational experience on both sides.
+
+---
+
+## Architecture
+
+Seven Terraform modules, each replacing one Nokia network function. The mapping
+in the table below is what this diagram encodes.
+
+```mermaid
+flowchart TB
+  Client(["Internet Client"])
+
+  subgraph Entry ["Entry point — Nokia AMF → AWS ALB"]
+    ALB["Application Load Balancer<br/>(HTTPS, multi-AZ, cross-zone)"]
+    WAF["AWS WAF<br/>(L7 threat protection)"]
+  end
+
+  subgraph DataPlane ["Data plane — Nokia UPF → AWS VPC"]
+    VPC["VPC<br/>(3 AZs, public + private subnets)"]
+    NAT["NAT Gateway<br/>(per-AZ — CGNAT equivalent)"]
+    FlowLogs["VPC Flow Logs<br/>(usage reporting to S3)"]
+  end
+
+  subgraph Orchestration ["Container orchestration — Nokia CBAM → ECS Fargate"]
+    ECS["ECS Fargate Service<br/>(3 tasks, rolling deploy, min-healthy 100%)"]
+    ASG["Application Auto Scaling<br/>(CPU + ALB request-count HPA)"]
+    ECR["Amazon ECR<br/>(container image registry)"]
+  end
+
+  subgraph EventBus ["Event streaming — Nokia OAM bus → Kinesis"]
+    Kinesis["Kinesis Data Streams<br/>(ordered per partition key, KMS encrypted)"]
+    Lambda["Lambda consumer<br/>(FCAPS event processor)"]
+  end
+
+  subgraph DataStore ["Subscriber store — Nokia UDM → DynamoDB"]
+    DDB["DynamoDB<br/>(on-demand, TTL, PITR, KMS encrypted)"]
+  end
+
+  subgraph Discovery ["Service discovery — Nokia NRF → Cloud Map"]
+    CloudMap["AWS Cloud Map<br/>(private DNS namespace, ECS auto-register)"]
+  end
+
+  subgraph Policy ["Compliance policy — Nokia PCF → AWS Config"]
+    Config["AWS Config<br/>(6 managed rules: PCI DSS + SOC 2)"]
+    CloudTrail["CloudTrail<br/>(multi-region API audit trail)"]
+    SecHub["Security Hub<br/>(findings aggregation + scoring)"]
+  end
+
+  Client --> WAF --> ALB
+  ALB --> ECS
+  ECS --> ECR
+  ECS --> ASG
+  ECS --> DDB
+  ECS --> Kinesis
+  ECS --> CloudMap
+  Kinesis --> Lambda
+  Lambda --> DDB
+  VPC --> NAT
+  VPC --> FlowLogs
+  ECS -.->|"runs inside"| VPC
+  Config --> SecHub
+  CloudTrail --> Config
+```
 
 ---
 
@@ -279,6 +348,73 @@ Mortgage processing platforms face the same constraints Nokia's 5G Core was desi
 **Audit trail requirement:** SOC 2 and PCI DSS require complete audit logs of all system events — same as 5G's CDR (Charging Data Record) requirement. Solution: CloudTrail + Kinesis + S3 for immutable event log, same pattern as UPF usage reporting to CHF.
 
 **Zero-downtime deployments:** Mortgage origination systems cannot take maintenance windows during business hours — same SLA as 5G Core. Solution: ECS rolling deployments with `maxUnavailable: 0` + ALB deregistration delay, same pattern as CBAM-managed CNF upgrades.
+
+---
+
+## Run it
+
+All seven modules are wired together in `terraform/environments/prod`. Every
+variable has a default, so `plan` works with no configuration.
+
+**Prerequisites:** Terraform >= 1.5, AWS CLI configured with credentials.
+
+```bash
+git clone https://github.com/sadvi11/nokia-5g-to-aws-migration.git
+cd nokia-5g-to-aws-migration/terraform/environments/prod
+
+# Validate without credentials or state — this is what CI runs
+terraform init -backend=false
+terraform validate
+terraform fmt -check -recursive
+
+# See what would be created (needs AWS credentials, creates nothing)
+terraform init
+terraform plan
+```
+
+> ### ⚠️ Applying this costs real money
+>
+> This is a production-shaped stack, not a free-tier demo. `terraform apply`
+> provisions, among other things:
+>
+> | Resource | Why it costs |
+> |---|---|
+> | **3 × NAT Gateway** (one per AZ) | ~$0.045/hour each, billed whether or not traffic flows — the largest line item by far |
+> | **Application Load Balancer** | Hourly charge plus LCU |
+> | **ECS Fargate** (3 tasks) | Per vCPU-second and GB-second |
+> | **Kinesis Data Streams** | Per shard-hour |
+> | **AWS Config** (6 rules) | Per configuration item recorded |
+> | **CloudTrail** (multi-region) | Per event delivered beyond the free tier |
+>
+> Expect this to run into the **low hundreds of dollars per month** if left
+> running. Verify against the [AWS pricing calculator](https://calculator.aws)
+> for `ca-central-1` before applying.
+>
+> The per-AZ NAT gateway is deliberate — it is the N+1 redundancy pattern
+> described below, and collapsing to a single shared NAT would cut cost by
+> roughly two-thirds at the price of an AZ-level single point of failure. That
+> trade-off is the point of the design, not an oversight.
+>
+> **Tear down when you are done:**
+>
+> ```bash
+> terraform destroy
+> ```
+
+### The modules
+
+| # | Module | Nokia equivalent | Provisions |
+|---|---|---|---|
+| 01 | `vpc-data-plane` | UPF (User Plane Function) | VPC across 3 AZs, public/private subnets, per-AZ NAT, flow logs |
+| 02 | `alb-entry-point` | AMF (Access & Mobility Management) | Application Load Balancer, target groups, listeners |
+| 03 | `ecs-container-orchestration` | CBAM (CNF lifecycle manager) | ECS Fargate service, task definitions, application auto-scaling |
+| 04 | `kinesis-event-bus` | OAM event bus | Kinesis Data Streams, KMS encryption, Lambda consumer |
+| 05 | `dynamodb-subscriber-store` | UDM (Unified Data Management) | DynamoDB with on-demand billing, TTL, point-in-time recovery |
+| 06 | `service-discovery` | NRF (NF Repository Function) | Cloud Map private DNS namespace, ECS auto-registration |
+| 07 | `compliance-policy` | PCF (Policy Control Function) | 6 AWS Config rules, CloudTrail, Security Hub |
+
+Each module is self-contained with its own `variables.tf` and `outputs.tf`, so
+any one can be consumed independently of the others.
 
 ---
 
