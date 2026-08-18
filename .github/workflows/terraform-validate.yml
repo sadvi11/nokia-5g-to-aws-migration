@@ -1,14 +1,30 @@
 name: Terraform Validate
 
+# Three levels of check, in increasing strength:
+#
+#   fmt/validate  - the configuration parses and types check
+#   plan          - the seven modules actually compose, every reference
+#                   resolves, and these are the resources that would exist
+#   architecture  - the planned resources still hold the properties each 5G
+#                   network function requires, and the compliance controls
+#                   claimed in docs/COMPLIANCE_MAPPING.md are really present
+#
+# The third is the one worth having. A mapping table in a README is a claim;
+# these are the same claims written so they can fail. All of it runs with no
+# AWS account and no credentials.
+
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   validate:
-    name: Validate Terraform
+    name: Format, validate and plan
     runs-on: ubuntu-latest
 
     steps:
@@ -18,16 +34,73 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.5.0"
+          terraform_version: "1.9.8"
 
-      - name: Terraform Format Check
+      - name: Terraform format check
         run: terraform fmt -check -recursive
         working-directory: terraform/
 
-      - name: Terraform Init
-        run: terraform init -backend=false
+      - name: Validate the production configuration
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
         working-directory: terraform/environments/prod/
 
-      - name: Terraform Validate
-        run: terraform validate
-        working-directory: terraform/environments/prod/
+      # The production provider validates credentials, as it should - skipping
+      # that on a config people might apply turns a wrong-account mistake into
+      # a silent one. terraform/test calls the same seven modules through a
+      # permissive provider so a plan can run with no AWS account at all.
+      - name: Plan the same modules without an AWS account
+        run: |
+          terraform init -backend=false -input=false
+          terraform plan -refresh=false -input=false -out=tfplan
+          terraform show -json tfplan > plan.json
+        working-directory: terraform/test/
+
+      - name: Report what would be created
+        run: |
+          python3 - <<'PY'
+          import json
+          plan = json.load(open("terraform/test/plan.json"))
+          res, kinds = [], {}
+          def walk(m):
+              for r in m.get("resources", []):
+                  res.append(r); kinds[r["type"]] = kinds.get(r["type"], 0) + 1
+              for c in m.get("child_modules", []): walk(c)
+          root = plan["planned_values"]["root_module"]
+          walk(root)
+          mods = len(root.get("child_modules", []))
+          print(f"{len(res)} resources across {mods} modules")
+          for k, v in sorted(kinds.items(), key=lambda x: -x[1])[:15]:
+              print(f"  {v:3}  {k}")
+          PY
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: pip install pytest
+
+      # The assertions that make the compliance mapping verifiable rather than
+      # aspirational. If a subnet is made public, encryption is dropped, or a
+      # port is opened, the build fails and names the network function whose
+      # guarantee was lost.
+      - name: Assert the AWS translation preserves each network function
+        run: python -m pytest tests/ -v
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Architecture verification"
+            echo ""
+            echo "| Check | What it proves |"
+            echo "|---|---|"
+            echo "| \`terraform validate\` | Configuration parses and types check |"
+            echo "| \`terraform plan\` | The seven modules compose; every reference resolves |"
+            echo "| Architecture tests | Each 5G function's guarantee survives translation |"
+            echo ""
+            echo "Runs on every commit with no AWS account and no credentials."
+          } >> "$GITHUB_STEP_SUMMARY"

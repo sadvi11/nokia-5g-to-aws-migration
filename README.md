@@ -1,14 +1,96 @@
 # Nokia 5G Core → AWS Architecture: A Production Migration Case Study
 
 [![Terraform Validate](https://github.com/sadvi11/nokia-5g-to-aws-migration/actions/workflows/terraform-validate.yml/badge.svg)](https://github.com/sadvi11/nokia-5g-to-aws-migration/actions/workflows/terraform-validate.yml)
-![Terraform](https://img.shields.io/badge/Terraform-1.5-7B42BC?logo=terraform&logoColor=white)
+![Terraform](https://img.shields.io/badge/Terraform-1.9-7B42BC?logo=terraform&logoColor=white)
 ![AWS](https://img.shields.io/badge/AWS-ca--central--1-FF9900?logo=amazonaws&logoColor=white)
 ![Modules](https://img.shields.io/badge/Modules-7-informational)
+![Verified](https://img.shields.io/badge/architecture-14%20assertions%20on%20every%20commit-3ecca0)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 > **By Sadhvi** | Cloud & AI Engineer | [GitHub](https://github.com/sadvi11) | Calgary, Canada
 >
 > *This case study documents how carrier-scale Nokia 5G Core network functions map directly to AWS production architecture — and what that means for designing highly available, low-latency fintech and enterprise cloud systems.*
+
+---
+
+## What is verified, and how
+
+This is an architecture study with working Terraform, not a production
+migration — Nokia is not putting their core on AWS, and I could not have done
+it if they were. What is real is the source side: I operated these network
+functions, so the mapping reflects what they do rather than what their names
+suggest.
+
+But a mapping table is a claim. **These are the same claims written so they can
+fail**, and they run on every commit with no AWS account and no credentials.
+
+```console
+$ terraform plan   # terraform/test — same 7 modules, permissive provider
+79 resources across 7 modules
+    6  aws_config_config_rule
+    6  aws_subnet
+    5  aws_iam_role
+    3  aws_nat_gateway
+    2  aws_security_group
+    ...
+
+$ pytest tests/ -v
+test_plan_is_not_empty                             PASSED
+test_upf_workloads_are_not_internet_addressable    PASSED
+test_upf_private_subnets_never_auto_assign_public_ips  PASSED
+test_data_plane_spans_multiple_availability_zones  PASSED
+test_amf_is_the_only_internet_facing_entry_point   PASSED
+test_udm_subscriber_store_is_encrypted_at_rest     PASSED
+test_udm_subscriber_store_is_recoverable           PASSED
+test_oam_event_stream_is_encrypted                 PASSED
+test_nrf_service_discovery_exists_and_is_used      PASSED
+test_pcf_policy_enforcement_is_actually_configured PASSED
+test_audit_trail_is_enabled                        PASSED
+test_every_major_resource_carries_project_tags     PASSED
+test_every_core_network_function_is_represented    PASSED
+test_mapped_resources_are_a_meaningful_share_of_the_stack  PASSED
+
+14 passed
+```
+
+### What each test protects
+
+| 5G function | Property it must keep | Assertion |
+|---|---|---|
+| **UPF** — user plane | Never directly addressable from outside | ECS tasks have `assign_public_ip: false`; private subnets never auto-assign |
+| **AMF** — access management | One controlled entry point | Exactly one security group admits `0.0.0.0/0`, and it is the ALB |
+| **UDM** — subscriber data | Encrypted, recoverable | DynamoDB SSE **and** point-in-time recovery *(PCI DSS Req 3)* |
+| **OAM** — telemetry | Encrypted; events carry subscriber IDs | Kinesis `encryption_type = KMS` |
+| **NRF** — repository | Functions find each other by name | Cloud Map namespace exists **and** every ECS service registers |
+| **PCF** — policy | Enforcement, not just observation | Config recorder present **and** ≥4 rules attached |
+| — | Survives a facility failure | Subnets span ≥2 availability zones |
+| — | Audit evidence exists | CloudTrail enabled, multi-region *(PCI DSS Req 10)* |
+
+**These fail when they should.** Injecting three faults into the plan — public
+ECS tasks, DynamoDB encryption off, Kinesis unencrypted — fails exactly the
+three corresponding tests and nothing else. A check that cannot fail is worse
+than no check, because it produces confidence without coverage.
+
+### Every resource traces back to a network function
+
+All 79 resources carry a `NokiaMapping` tag naming the 5G function they
+replace — **35 distinct mappings**, from `UPF-DataPlane` and `AMF-N2-AccessControl`
+to `PCF-NetworkGatingRule` and `UDM-SubscriberStore`.
+
+That is what makes this reviewable by someone who knows the carrier side but
+not AWS. They can ask *"where did the UPF go?"* and get the answer from the
+infrastructure itself rather than from a diagram that may have drifted.
+
+### Why the plan runs in a separate root module
+
+`terraform/test` calls the same seven modules as `environments/prod` through a
+provider with `skip_credentials_validation`. The production provider stays
+strict — putting that flag on a configuration people might actually apply
+turns a wrong-account mistake into a silent one.
+
+`terraform validate` proves the configuration parses. A plan proves the modules
+compose, every reference resolves, and these are the resources that would
+really be created.
 
 ---
 
