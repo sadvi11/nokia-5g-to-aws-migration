@@ -110,59 +110,48 @@ Seven Terraform modules, each replacing one Nokia network function. The mapping
 in the table below is what this diagram encodes.
 
 ```mermaid
-flowchart TB
-  Client(["Internet Client"])
+flowchart TD
+    Client(["Internet client"])
+    ALB["<b>Application Load Balancer</b> · Nokia AMF<br/>HTTPS · multi-AZ · cross-zone"]
+    ECS["<b>ECS Fargate service</b> · Nokia CBAM<br/>3 tasks · rolling deploy · min-healthy 100%"]
+    ASG["Application Auto Scaling<br/>CPU + ALB request count"]
+    Map["<b>Cloud Map</b> · Nokia NRF<br/>private DNS · ECS auto-registration"]
+    DDB[("<b>DynamoDB</b> · Nokia UDM<br/>on-demand · TTL · PITR · KMS")]
+    Kin["<b>Kinesis Data Streams</b> · Nokia OAM bus<br/>ordered per partition key · KMS"]
+    Lam["Lambda consumer<br/>FCAPS event processor"]
 
-  subgraph Entry ["Entry point — Nokia AMF → AWS ALB"]
-    ALB["Application Load Balancer<br/>(HTTPS, multi-AZ, cross-zone)"]
-    WAF["AWS WAF<br/>(L7 threat protection)"]
-  end
+    subgraph VPC["<b>VPC</b> · Nokia UPF — 3 AZs, public + private subnets"]
+        NAT["NAT Gateway<br/>one per AZ"]
+        Flow["VPC Flow Logs"]
+    end
 
-  subgraph DataPlane ["Data plane — Nokia UPF → AWS VPC"]
-    VPC["VPC<br/>(3 AZs, public + private subnets)"]
-    NAT["NAT Gateway<br/>(per-AZ — CGNAT equivalent)"]
-    FlowLogs["VPC Flow Logs<br/>(usage reporting to S3)"]
-  end
+    subgraph GOV["<b>Compliance policy</b> · Nokia PCF"]
+        Cfg["AWS Config<br/>6 managed rules"]
+        CT["CloudTrail<br/>multi-region audit trail"]
+        S3[("S3 · versioned, KMS encrypted,<br/>public access blocked")]
+    end
 
-  subgraph Orchestration ["Container orchestration — Nokia CBAM → ECS Fargate"]
-    ECS["ECS Fargate Service<br/>(3 tasks, rolling deploy, min-healthy 100%)"]
-    ASG["Application Auto Scaling<br/>(CPU + ALB request-count HPA)"]
-    ECR["Amazon ECR<br/>(container image registry)"]
-  end
+    Client --> ALB --> ECS
+    ECS --> ASG
+    ECS --> Map
+    ECS --> DDB
+    ECS --> Kin --> Lam --> DDB
+    ECS -.->|"runs inside"| VPC
+    Cfg --> S3
+    CT --> S3
 
-  subgraph EventBus ["Event streaming — Nokia OAM bus → Kinesis"]
-    Kinesis["Kinesis Data Streams<br/>(ordered per partition key, KMS encrypted)"]
-    Lambda["Lambda consumer<br/>(FCAPS event processor)"]
-  end
-
-  subgraph DataStore ["Subscriber store — Nokia UDM → DynamoDB"]
-    DDB["DynamoDB<br/>(on-demand, TTL, PITR, KMS encrypted)"]
-  end
-
-  subgraph Discovery ["Service discovery — Nokia NRF → Cloud Map"]
-    CloudMap["AWS Cloud Map<br/>(private DNS namespace, ECS auto-register)"]
-  end
-
-  subgraph Policy ["Compliance policy — Nokia PCF → AWS Config"]
-    Config["AWS Config<br/>(6 managed rules: PCI DSS + SOC 2)"]
-    CloudTrail["CloudTrail<br/>(multi-region API audit trail)"]
-    SecHub["Security Hub<br/>(findings aggregation + scoring)"]
-  end
-
-  Client --> WAF --> ALB
-  ALB --> ECS
-  ECS --> ECR
-  ECS --> ASG
-  ECS --> DDB
-  ECS --> Kinesis
-  ECS --> CloudMap
-  Kinesis --> Lambda
-  Lambda --> DDB
-  VPC --> NAT
-  VPC --> FlowLogs
-  ECS -.->|"runs inside"| VPC
-  Config --> SecHub
-  CloudTrail --> Config
+    linkStyle default stroke:#64748b,stroke-width:1.5px
+    classDef default fill:#f8fafc,stroke:#64748b,stroke-width:2px,color:#0f172a
+    classDef aws   fill:#fff7ed,stroke:#c2410c,stroke-width:3px,color:#7c2d12
+    classDef ci    fill:#f5f3ff,stroke:#6d28d9,stroke-width:3px,color:#4c1d95
+    classDef data  fill:#ecfdf5,stroke:#047857,stroke-width:3px,color:#064e3b
+    classDef warn  fill:#fef3c7,stroke:#b45309,stroke-width:3px,color:#78350f
+    class ALB,ECS aws
+    class DDB,S3 data
+    class Kin,Lam ci
+    class Cfg,CT warn
+    style VPC fill:#fff7ed,stroke:#c2410c,stroke-width:3px,color:#7c2d12
+    style GOV fill:#fffbeb,stroke:#b45309,stroke-width:3px,color:#78350f
 ```
 
 ---
@@ -176,6 +165,12 @@ This is also exactly how AWS microservices work. The table below is not a rough 
 ---
 
 ## The Mapping Table
+
+**This table is a conceptual mapping, not a deployment manifest.** It names the AWS
+service that plays each Nokia function's role. Some of those — API Gateway, Cognito,
+WAF — are the right conceptual equivalent but are *not* built by this Terraform. What
+is actually deployed is exactly what the architecture diagram above shows, and nothing
+more.
 
 | Nokia 5G Component | What It Does in 5G | AWS Equivalent | Why the Mapping Is Exact |
 |---|---|---|---|
@@ -493,7 +488,7 @@ terraform plan
 | 04 | `kinesis-event-bus` | OAM event bus | Kinesis Data Streams, KMS encryption, Lambda consumer |
 | 05 | `dynamodb-subscriber-store` | UDM (Unified Data Management) | DynamoDB with on-demand billing, TTL, point-in-time recovery |
 | 06 | `service-discovery` | NRF (NF Repository Function) | Cloud Map private DNS namespace, ECS auto-registration |
-| 07 | `compliance-policy` | PCF (Policy Control Function) | 6 AWS Config rules, CloudTrail, Security Hub |
+| 07 | `compliance-policy` | PCF (Policy Control Function) | 6 AWS Config rules, CloudTrail, encrypted S3 delivery |
 
 Each module is self-contained with its own `variables.tf` and `outputs.tf`, so
 any one can be consumed independently of the others.
