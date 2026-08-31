@@ -164,6 +164,31 @@ This is also exactly how AWS microservices work. The table below is not a rough 
 
 ---
 
+## Well-Architected review
+
+Reviewed against the six pillars of the
+[AWS Well-Architected Framework](https://docs.aws.amazon.com/wellarchitected/latest/framework/the-pillars-of-the-framework.html),
+which is the review a carrier would expect before a migration like this is
+approved. **This is a design review of Terraform that has never been applied**,
+so every row below describes intent expressed in code, not observed behaviour.
+
+| Pillar | Addressed in the modules | Where it falls short |
+|---|---|---|
+| **Operational excellence** | Seven self-contained modules, each with its own variables and outputs, so any one can be consumed independently. CloudWatch log groups with explicit retention. VPC flow logs. CI validates and lints every module on each commit. | No deployment has happened, so no operational feedback loop exists. No runbooks, no dashboards, no alarms defined. |
+| **Security** | KMS customer-managed keys with aliases. S3 server-side encryption and public access blocks on both the Config and CloudTrail buckets. Multi-region CloudTrail. AWS Config recorder with six managed rules. Security groups scoped per tier. | No WAF, no GuardDuty, no Security Hub — and the architecture diagram no longer claims them. Secrets are passed as variables rather than through Secrets Manager. |
+| **Reliability** | Three availability zones with a NAT gateway per AZ, so a zone failure does not remove egress. DynamoDB point-in-time recovery and deletion protection. ECS service with rolling deploys at minimum-healthy 100%. Kinesis ordered per partition key. | **Single region.** No cross-region failover, and no stated RTO or RPO — which for a carrier core would be the first question asked and the first thing to design. |
+| **Performance efficiency** | Application Auto Scaling on the ECS service, driven by a predefined metric rather than a fixed schedule. Kinesis partitioned by key so ordering holds per subscriber. DynamoDB on-demand, so throughput follows load rather than a provisioned guess. | No load testing and no benchmark. **The user plane does not map cleanly and is not modelled** — a UPF forwarding subscriber packets at line rate is not an ECS task, and the README says so rather than pretending otherwise. |
+| **Cost optimization** | DynamoDB `PAY_PER_REQUEST`, so an idle environment costs almost nothing. TTL on the subscriber table so records expire rather than accumulate. Fargate, so there is no idle node capacity to pay for. | No Savings Plan or Compute Savings modelling, no cost allocation tags, no budget defined. For a workload of this shape that would be a real omission in production. |
+| **Sustainability** | On-demand and serverless choices mean capacity tracks demand rather than peak. | **Nothing deliberate.** No Graviton, no region selection by carbon intensity, no measurement. Marking this pillar as addressed would be an unearned claim. |
+
+**The honest summary:** the security and reliability pillars are where a carrier
+migration lives, and those are the strongest here. Cost and sustainability are
+the weakest. The single-region posture is the largest gap — for a network core
+carrying subscriber traffic, multi-region is not an enhancement, it is the
+requirement, and this design does not meet it.
+
+---
+
 ## The Mapping Table
 
 **This table is a conceptual mapping, not a deployment manifest.** It names the AWS
